@@ -142,7 +142,7 @@ def whereCreated(dep_list,obj_name):
             where_list.append(dep_list[i].file_name)     
     return where_list  
     
-#returns dependency list    
+#returns object dependency list    
 def dependencyList(dep_list):   
     ret_list = list()
     depends_on = list()
@@ -157,129 +157,14 @@ def dependencyList(dep_list):
                 sub_list.append(whereCreated(dep_list,x))
                 ret_list.append(sub_list)
     return ret_list
-
-#not used - to be deleted
-def enreachList(dep_list,file_list):
-    append_list = list()
-    for i in file_list:
-        for y in range(0,len(dep_list)):
-            if dep_list[y][0] == i:
-                break
-        else:
-            append_list = [i,[i]]
-            #print(append_list)
-            #dep_list. = dep_list + append_list
-            dep_list.append (append_list)
-    return dep_list
-
-#not used - to be deleted    
-#add missed roots like '['root_file','root_file']'    
-def enreachList1(dep_list):
-    for fch,fpar in dep_list:
-        #print('fch,fpar',fch,fpar)
-        if fpar not in [x[0] for x in dep_list]:
-            #print('not in')
-            dep_list.append([fpar,fpar])      
-    return dep_list
-
-#map nodel without parents to 'root'
-#add root-root as superroot
-#remove self fks    
-#not used - to be deleted
-def enreachList2(dep_list):
-    for fch,fpar in dep_list:
-        #print('fch,fpar',fch,fpar)
-        if fpar not in [x[0] for x in dep_list]:
-            #print('not in')
-            dep_list.append([fpar,'root'])
-        if fch == fpar:
-            dep_list.remove([fch,fpar])
-    dep_list.append(['root','root'])    
-    return dep_list
-
     
-def displayGraph(id, nodes, level,ret_str): 
-        #print('%s%s%s level: %s' % (' ' * level, '\\__', id,level)) 
-    ret_str = ret_str + str(' ' * level) + '\\__' + str(id)+ ' Level: ' + str(level) +'\n'
-    for child in sorted(nodes.get(id, [])): 
-        ret_str = displayGraph(child, nodes, level + 1,ret_str) 
-    return ret_str        
-               
-def orderList(id, nodes, level,ret_list): 
-        #print('%s%s%s level: %s' % (' ' * level, '\\__', id,level)) 
-    ret_list.append(str(level) +': '+ str(id))
-    for child in sorted(nodes.get(id, [])): 
-        ret_list = orderList(child, nodes, level + 1,ret_list) 
-    return ret_list        
-
-def orderList1(id, nodes, level,ret_list): 
-        #print('%s%s%s level: %s' % (' ' * level, '\\__', id,level)) 
-    ret_list.append([level,str(id)])
-    for child in sorted(nodes.get(id, [])): 
-        ret_list = orderList1(child, nodes, level + 1,ret_list) 
-    return ret_list  
-    
-def progressbar(it, prefix = "", size = 60):
-    count = len(it)
-    def _show(_i):
-        x = int(size*_i/count)
-        sys.stdout.write("%s[%s%s] %i/%i\r" % (prefix, "#"*x, "."*(size-x), _i, count))
-        sys.stdout.flush()
-    
-    _show(0)
-    for i, item in enumerate(it):   
-        yield item
-        _show(i+1)
-    sys.stdout.write("\n")
-    sys.stdout.flush()
-
-  
-if __name__ == '__main__':
-    src_path = str()
-    trg_path = 'M:/Work/python'
-    content = str()
-    statment_obj = list()
-    
-    src_path =input('Enter path to anlt folder: ')
-    src_path = src_path.replace("\\","/")
-
-    
-    #dirs = ('table','view','materialized_view','synonym')
-    dirs = ('table','view','materialized_view')
-    filename_list = list()
-    
-    #count total files
-    total_cnt = 0
-    for subdir in dirs:
-        for x in os.listdir(src_path + '/'+ subdir ):
-            total_cnt +=1
-    current_cnt = 1   #just for count in progress     
-        
-    for subdir in dirs: 
-        #files = os.listdir(src_path + '/'+ subdir ) #for frogress bar
-        for x in os.listdir(src_path + '/'+ subdir ):
-            print('Loading file:', src_path + '/'+ subdir +'/' + x + ' '*20)
-            print('Progress: [%s%s] %i / %i files    \r'  % 
-                ( '#'*int(current_cnt/10), '.'*int(total_cnt/10-current_cnt/10), current_cnt, total_cnt),end='\r')
-            #sys.stdout.write('Load file:'+ src_path + '/'+ subdir +'/' + x +'\r')
-            #sys.stdout.flush()
-            f = open(src_path + '/' + subdir + '/' + x, 'r')
-            content = f.read()
-            f.close
-            filename_list.append (subdir + '/' + x)
-            curr_statement = Statement(subdir + '/' + x,content)
-            statment_obj.append(curr_statement)
-            current_cnt +=1 #just for count in progress
-    content = str()  
-    print('\nProcessing ... ')
-    
-    #show objects info
+#returns object dependency list + write log - writing should be refactored
+def dependencyFileList(dep_list):
+    content = str() #log file content
+    #show objects info - just headed
     for x in statment_obj:
         content = content + x.showInfo
-        
-    #find  file dependency    
-    dep_list = dependencyList(statment_obj)
-    
+    #corrected list - without errors    
     new_list=list()
     content = content + '\n*** Dependency list:'
     for i in range(0,len(dep_list)):
@@ -292,101 +177,17 @@ if __name__ == '__main__':
             dep_list[i][1] = dep_list[i][1] #[0] 
         #convert [file,[file1][file2]] to [file,file1]
         new_list.append([dep_list[i][0],dep_list[i][1][0]])
-    dep_list = new_list
 
-    
-    
-    '''
-    dep_list = enreachList2(dep_list)
-    
-    
-    for a,b in dep_list:
-        print(a,b)
-    
-    
-    #content = content + 'start\n'
-    
-    #page_ids = [ ('file1', 'file1'),('file2', 'file1'),('file3', 'file1'),
-    #            ('file4', 'file2'), ('file5', 'file4'),('file6', 'file3'),
-    #            ('fileX', 'file7')] 
-             
-    
-    page_ids = list() 
-    small_tuple = tuple()
-    #page_ids.append( ('file1', 'file1'))
-    #print(page_ids)
-    for i in range(0,len(dep_list)):
-        #small_tuple = (dep_list[i][0],''.join(dep_list[i][1]))
-        small_tuple = (dep_list[i][0], dep_list[i][1])
-        #small_tuple = (''.join(dep_list[i][1]),dep_list[i][0])
-        page_ids.append(small_tuple)
-    ##page_ids.append(('view/a.sql', 'view/a.sql'))
-    ##page_ids.append(('view/q.sql', 'view/q.sql'))
-       
-    
-    nodes, roots = defaultdict(set), set() 
+        # write report
+    f = open(trg_path + '/' + 'SQL_analyser.log', 'w')
+    f.write(content)
+    f.close
+    return new_list
 
-    for article, parent in page_ids: 
-        if article == parent: 
-            roots.add(article) 
-        else: 
-            nodes[parent].add(article)
-    
-    content = content + '\n***** GRAPH*****\nstart\n'
-    
-    union_list = list()
-        
-    for id in sorted(roots): 
-        content = content + displayGraph(id, nodes, 0,'') 
-        #union_list = union_list + orderList(id, nodes, 0,list()) 
-        union_list = orderList1(id, nodes, 0,union_list) 
-        
-    #print(union_list)
-    
-    #16.09.2017 test logic
-    temp_list = list()
-    max_level = 0
-    for level,file in union_list:
-        max_level = level
-        for l,f in union_list:
-            if file == f and level<l:
-                max_level = l
-        if file not in [x[1] for x in temp_list]:
-            temp_list.append([max_level,file])
-    union_list =  temp_list       
-    #16.09.2017 end of test logic
-    
-    max_level = 0
-    for level,file in union_list:
-        if level > max_level:
-            max_level = level
-    temp_list = list()
-    
-    for l in range(0,max_level+1):
-        for level,file in union_list:
-            if level == l:
-                print(l,file)
-                temp_list.append(file)
-        
-    union_list = temp_list
-
-    
-    for i in filename_list:
-        if i not in union_list:
-            union_list.insert(0,i)
-        
-    final_list = list()
-    for i in union_list:
-        if i not in final_list:
-            final_list.append(i)
-    
-    for i in final_list:
-        content = content + '\n@' + src_path + '/' +i
-        
-    '''    
-    #completely new approach
-    
+def dependencyToDeployment(filename_list,dep_list):
+    #return list:
     final = ['DUMMY']
+    
     #add files without parents
     for i in filename_list:
         if i not in [x[0] for x in dep_list]:
@@ -423,33 +224,88 @@ if __name__ == '__main__':
         else:
             #print('REVERT', ch)
             dep_list.insert(0,[ch,par])
-            
-    
-    #completely new approach end 
-    
-    # write report
-    f = open(trg_path + '/' + 'SQL_analyser.log', 'w')
-    f.write(content)
-    f.close
-    
+    final.remove ('DUMMY')       
+    return final
+
+def writeDeploymentScript(final, path,file_name,src_path):
     content = str()
-    final.remove ('DUMMY')
     content = content + '/**\tDeployment script: **/\n'
     for i in final:
         content = content + '\n@' + src_path + '/' + i
-    
     # write deployment script     
-    f = open(trg_path + '/' + 'SQL_analyser.sql', 'w')
+    f = open(path  + '/' +  file_name, 'w')
     f.write(content)
     f.close
+
+def printProgress (file_name,current_cnt,total_cnt):
+    print('Loading file:', file_name + ' '*30)
+    print('Progress: [%s%s] %i / %i files    \r'  % 
+         ( '#'*int(current_cnt/10), '.'*int(total_cnt/10-current_cnt/10), current_cnt, total_cnt),end='\r')
+    
+if __name__ == '__main__':
+    src_path = str()
+    trg_path = 'M:/Work/python'
+    content = str()
+    #list of "Statement" objects:
+    statment_obj = list()
+
+    
+    src_path =input('Enter path to anlt folder: ')
+    src_path = src_path.replace("\\","/")
+
+    
+    #list of directories and also sequence of reading
+    dirs = ('sequence','synonym','table','view','materialized_view','function','package','trigger','grant/CMO','data_load_scripts')
+    
+    #there are four lists of filenames 
+    filename_list = list()      #all filenames which are read here
+    deployment_top = list()     #filelist of objects which are deployed firstly, e.g. sequences, synonyms
+    deployment_mid = list()     #all filenames which are read here
+    deployment_bottom = list()  #filelist of objects which are deployed in the end, e.g. grants
+    
+    #count total files
+    total_cnt = 0
+    for subdir in dirs:
+        for x in os.listdir(src_path + '/'+ subdir ):
+            total_cnt +=1
+    current_cnt = 1   #just for count in progress     
+        
+    for subdir in dirs: 
+        #files = os.listdir(src_path + '/'+ subdir ) #for frogress bar
+        for x in os.listdir(src_path + '/'+ subdir ):
+            printProgress (src_path + '/'+ subdir +'/' + x, current_cnt, total_cnt)
+            '''
+            print('Loading file:', src_path + '/'+ subdir +'/' + x + ' '*30)
+            print('Progress: [%s%s] %i / %i files    \r'  % 
+                ( '#'*int(current_cnt/10), '.'*int(total_cnt/10-current_cnt/10), current_cnt, total_cnt),end='\r')
+            #sys.stdout.write('Load file:'+ src_path + '/'+ subdir +'/' + x +'\r')
+            #sys.stdout.flush()
+            '''
+            if subdir in ('table','view','materialized_view'):
+                f = open(src_path + '/' + subdir + '/' + x, 'r')
+                content = f.read()
+                f.close
+                filename_list.append (subdir + '/' + x)
+                curr_statement = Statement(subdir + '/' + x,content)
+                statment_obj.append(curr_statement)           
+            elif subdir in ('sequence','synonym'):
+                deployment_top.append(subdir + '/' + x)
+            elif subdir in ('grant/CMO','function','package','trigger','data_load_scripts'):
+                deployment_bottom.append(subdir + '/' + x)    
+            current_cnt +=1 #just for count progress
+    
+    print('\nProcessing: find object dependencies ... ')        
+    dep_list = dependencyList(statment_obj)
+    
+    print('Processing: find file dependencies ... ')  
+    dep_list = dependencyFileList(dep_list)
+    
+    print('Processing: build deployment script ... ')
+    deployment_mid = dependencyToDeployment(filename_list,dep_list)
+    
+    print('Processing: save deployment script ... ')
+    writeDeploymentScript(deployment_top + deployment_mid + deployment_bottom,trg_path,'SQL_analyser.sql',src_path)
     
     print('Done!\nReport file:',trg_path + '/' + 'SQL_analyser.log')
     print('Deployment file:',trg_path + '/' + 'SQL_analyser.sql')
     input('Press any key to exit')
-    
-    
-    
-    
-    
-    
-    
