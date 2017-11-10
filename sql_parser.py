@@ -1,6 +1,6 @@
 import re
 import os
-from collections import defaultdict 
+#from collections import defaultdict 
 import sys
 
 class Statement:
@@ -123,7 +123,7 @@ class Statement:
         child_str = ', '.join(str(x) for x in self.child_list)
         #sttm_str = str()
         #sttm_str = ';\n '.join(str(x) for x in self.sttm_list)
-        return ('\n***************************\n'
+        return ('\n' + '*'*25 +'\n'
         '*** Filename: %s\n'
         #'*** File content: %s\n'
         #'*** File statements: %s\n'
@@ -157,9 +157,10 @@ def dependencyList(dep_list):
                 sub_list.append(whereCreated(dep_list,x))
                 ret_list.append(sub_list)
     return ret_list
-    
-#returns object dependency list + write log - writing should be refactored
-def dependencyFileList(dep_list):
+'''
+# REFACTORED!!! backup of function
+# returns object dependency list + write log - writing should be refactored
+def dependencyFileList(dep_list, statment_obj, trg_path):
     content = str() #log file content
     #show objects info - just headed
     for x in statment_obj:
@@ -183,7 +184,58 @@ def dependencyFileList(dep_list):
     f.write(content)
     f.close
     return new_list
+ '''   
 
+#returns object dependency list + write log - writing should be refactored
+def dependencyListCleanUp(dep_list):
+    new_list = list()   # corrected list - without errors
+    error_list = list() # list with errors
+    for x,y in dep_list:
+        # case when one object is created/altered in more then two files
+        if len(y) > 1:
+            error_str = ('Same object is created or altered in two or more files: '
+                         + ', '.join(y)
+                         + '\nFile  ' + x + ' depends on it.'  
+                         + '\nOnly first file is considered in consolidated deployment script: ' + y[0]
+                         + '\nAll other files are skipped: '  
+                         + ', '.join(y[1:])
+                         + '\nPlease correct files and restart process...')  
+            error_list.append(error_str)
+        #take firs one: convert [file,[file1][file2]] to [file,file1]
+        new_list.append([x,y[0]])         
+    return new_list, error_list
+
+     
+     
+     
+def logDependency(dep_list,error_list,statment_obj, trg_path):
+    content = str() #log file content
+    separator = '\n' + '*'*50
+    
+    # log objects info
+    content =  "*** Object's dependency information:"
+    for x in statment_obj:
+        content = content + x.showInfo
+        
+    # log file dependencies
+    content = content + separator + '\n*** File dependencies:'
+    for x,y in dep_list:
+        content = content  +'\n' + 'File  '+ x + '   Depends on file ' +  y
+    
+    # log errors in dependencies
+    content = content + separator + '\n*** File dependency errors:\n'
+    for n, x in enumerate(error_list,1):
+        content = content + ('\n*** ERROR(' + str(n) + '): ' 
+                            + x.replace('\n','\n*** ERROR('+ str(n) +'): ')
+                            + '\n')
+     
+    # write report
+    f = open(trg_path + '/' + 'SQL_analyser.log', 'w')
+    f.write(content)
+    f.close
+    
+    
+    
 def dependencyToDeployment(filename_list,dep_list):
     #return list:
     final = ['DUMMY']
@@ -231,81 +283,146 @@ def writeDeploymentScript(final, path,file_name,src_path):
     content = str()
     content = content + '/**\tDeployment script: **/\n'
     for i in final:
-        content = content + '\n@' + src_path + '/' + i
+        content = content + '\n@' + str(src_path) + '/'+ i
     # write deployment script     
     f = open(path  + '/' +  file_name, 'w')
     f.write(content)
     f.close
 
 def printProgress (file_name,current_cnt,total_cnt):
-    print('Loading file:', file_name + ' '*30)
+    divider = total_cnt/25 #25 is total len of bar
+    brogress_bar_line = ('Progress: %s%s %i / %i files    \r'  % 
+        ( chr(9608)*int(current_cnt/divider), chr(9617)*int((total_cnt-current_cnt)/divider), current_cnt, total_cnt))
+    loading_file_line = 'Loading file: ' + str(file_name) 
+    #print('Loading file:', file_name + ' '*30)    
+    print (loading_file_line + ' '*(len(brogress_bar_line) - len(loading_file_line)))
+    print (brogress_bar_line,end='\r')
+    '''
     print('Progress: [%s%s] %i / %i files    \r'  % 
          ( '#'*int(current_cnt/10), '.'*int(total_cnt/10-current_cnt/10), current_cnt, total_cnt),end='\r')
+    '''
     
-if __name__ == '__main__':
+      
+
+def main():    
     src_path = str()
-    trg_path = 'M:/Work/python'
-    content = str()
+    #trg_path = 'M:/Work/python'
     #list of "Statement" objects:
     statment_obj = list()
-
     
-    src_path =input('Enter path to anlt folder: ')
+    
+    #ask for anlt path
+    while True:
+        src_path = input('Enter path to anlt folder: ')
+        if not os.path.isdir(src_path):
+            print('Directory does not exist...\n')
+        else:
+            break
+            
     src_path = src_path.replace("\\","/")
-
+    # output dir is same as input anlt dir - could be changed:
+    trg_path = src_path 
     
+    # scan CMO or FMO path for grants?
+    # actually this CMO and FMO is not required in svn - grants are same
+    while True:
+        cmo_fmo  = input('CMO or FMO svn structure: ').upper()
+        if cmo_fmo not in ('CMO','FMO'):
+            print('CMO and FMO are only possible values...\n')
+        else:
+            break
+          
     #list of directories and also sequence of reading
-    dirs = ('sequence','synonym','table','view','materialized_view','function','package','trigger','grant/CMO','data_load_scripts')
+    dirs = ('sequence','synonym','table','view','materialized_view','function','package','trigger','grant/' + cmo_fmo,'data_load_scripts')
     
-    #there are four lists of filenames 
-    filename_list = list()      #all filenames which are read here
-    deployment_top = list()     #filelist of objects which are deployed firstly, e.g. sequences, synonyms
-    deployment_mid = list()     #all filenames which are read here
-    deployment_bottom = list()  #filelist of objects which are deployed in the end, e.g. grants
+    #there are four lists with filenames:
+    filename_list  = list()     # all filenames which are read from folders are here
+    deployment_top = list()     # filelist of objects which are deployed firstly, e.g. sequences, synonyms
+    deployment_mid = list()     # filelist of objects which are deployed, here we will have objects with dependencies
+    deployment_bottom = list()  # filelist of objects which are deployed in the end, e.g. grants
     
-    #count total files
+    #count total files - just for UI
     total_cnt = 0
     for subdir in dirs:
-        for x in os.listdir(src_path + '/'+ subdir ):
-            total_cnt +=1
-    current_cnt = 1   #just for count in progress     
-        
-    for subdir in dirs: 
-        #files = os.listdir(src_path + '/'+ subdir ) #for frogress bar
-        for x in os.listdir(src_path + '/'+ subdir ):
-            printProgress (src_path + '/'+ subdir +'/' + x, current_cnt, total_cnt)
-            '''
-            print('Loading file:', src_path + '/'+ subdir +'/' + x + ' '*30)
-            print('Progress: [%s%s] %i / %i files    \r'  % 
-                ( '#'*int(current_cnt/10), '.'*int(total_cnt/10-current_cnt/10), current_cnt, total_cnt),end='\r')
-            #sys.stdout.write('Load file:'+ src_path + '/'+ subdir +'/' + x +'\r')
-            #sys.stdout.flush()
-            '''
-            if subdir in ('table','view','materialized_view'):
-                f = open(src_path + '/' + subdir + '/' + x, 'r')
-                content = f.read()
-                f.close
-                filename_list.append (subdir + '/' + x)
-                curr_statement = Statement(subdir + '/' + x,content)
-                statment_obj.append(curr_statement)           
-            elif subdir in ('sequence','synonym'):
-                deployment_top.append(subdir + '/' + x)
-            elif subdir in ('grant/CMO','function','package','trigger','data_load_scripts'):
-                deployment_bottom.append(subdir + '/' + x)    
-            current_cnt +=1 #just for count progress
+        try:
+            for x in os.listdir(src_path + '/'+ subdir ):
+                total_cnt +=1
+        except IOError:
+            continue
+    current_cnt = 1   #just for count in progress for UI     
     
-    print('\nProcessing: find object dependencies ... ')        
+    # run through directories
+    # and depending on folder (object type) use different behaviour
+    for subdir in dirs: 
+        try:
+            files_list = os.listdir(src_path + '/'+ subdir ) #for frogress bar
+            for x in files_list:
+                printProgress ('../' +  subdir + '/' + x, current_cnt, total_cnt)
+                # for tables, views, mviews the order is important
+                if subdir in ('table','view','materialized_view'):
+                    f = open(src_path + '/' + subdir + '/' + x, 'r')
+                    content = f.read()
+                    f.close
+                    filename_list.append (subdir + '/' + x)
+                    curr_statement = Statement(subdir + '/' + x, content)
+                    statment_obj.append(curr_statement)           
+                # sequences and syns are always on top
+                elif subdir in ('sequence','synonym'):
+                    deployment_top.append(subdir + '/' + x)
+                # grants, and pl/sql always in the end (bottom list)    
+                elif subdir in ('grant' + cmo_fmo,'function','package','trigger'):
+                    deployment_bottom.append(subdir + '/' + x)    
+                # dataload scripts are in the end
+                # alter_session_disable_parallel_dml - is workaround to have smooth 
+                # dml deployment - should be included to the scripts
+                elif subdir in ('data_load_scripts'):
+                    deployment_bottom.append('alter_session_disable_parallel_dml.sql')
+                    deployment_bottom.append(subdir + '/' + x) 
+                current_cnt +=1 #increment just for count in progress bar
+        except IOError:
+            print('Warning: folder "' + subdir + '" does not exist and skiped' + ' ' * 30 + '\r')
+            continue    
+        
+        
+    print('\nProcessing: find dependencies ... ')        
     dep_list = dependencyList(statment_obj)
     
+    """
     print('Processing: find file dependencies ... ')  
-    dep_list = dependencyFileList(dep_list)
+    dep_list = dependencyFileList(dep_list,statment_obj,trg_path)
+    """
     
-    print('Processing: build deployment script ... ')
+    print('Processing: cleaning up dependencies ... ')  
+    dep_list, error_list = dependencyListCleanUp(dep_list)
+    
+    #list with errors
+    print('Processing: write log-file ... ')  
+    logDependency(dep_list,error_list,statment_obj, trg_path)
+    
+    
+    
+    
+    print('Processing: building deployment script ... ')
     deployment_mid = dependencyToDeployment(filename_list,dep_list)
     
-    print('Processing: save deployment script ... ')
+    print('Processing: saving deployment script ... ')
     writeDeploymentScript(deployment_top + deployment_mid + deployment_bottom,trg_path,'SQL_analyser.sql',src_path)
+    #writeDeploymentScript(deployment_top + deployment_mid + deployment_bottom,trg_path,'SQL_analyser.sql','')
     
     print('Done!\nReport file:',trg_path + '/' + 'SQL_analyser.log')
     print('Deployment file:',trg_path + '/' + 'SQL_analyser.sql')
-    input('Press any key to exit')
+    if len(error_list) > 0:
+        print('There are errors: please check log file')
+    input('Press enter key to exit')
+    
+if __name__ == '__main__':
+    # wrapping for user keyboard interrupt
+    try:
+        main()
+    except KeyboardInterrupt:
+        print('\nExit by user interrupt...')    
+    
+    
+    
+    
+    
