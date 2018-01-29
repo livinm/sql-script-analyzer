@@ -280,10 +280,18 @@ def dependencyToDeployment(filename_list,dep_list):
     return final
 
 def writeDeploymentScript(final, path,file_name,src_path):
+    # to be refactored
     content = str()
     content = content + '/**\tDeployment script: **/\n'
+    content = content + 'set echo on\n'
+    content = content + ('spool %s\n' % (file_name.split('.', 1)[0]+'.log'))
+    content = content + '@/home/tu03316/fda/parameters.sql\n' 
     for i in final:
-        content = content + '\n@' + str(src_path) + '/'+ i
+        if str(i).find ('data_load_scripts') != -1 and str(i).find ('.xlsx') == -1:
+            content = content + '\nalter session disable parallel dml;'
+        if str(i).find ('.xlsx') == -1: #exclude excel sheets from team C ;)  
+            #content = content + '\n@' + str(src_path) + '/'+ i
+            content = content + '\n@' + i # '/'+ i
     # write deployment script     
     f = open(path  + '/' +  file_name, 'w')
     f.write(content)
@@ -291,8 +299,10 @@ def writeDeploymentScript(final, path,file_name,src_path):
 
 def printProgress (file_name,current_cnt,total_cnt):
     divider = total_cnt/25 #25 is total len of bar
+    empty_char = '.' #e.g. chr(9617)
+    full_char = '#' #e.g. chr(9608)
     brogress_bar_line = ('Progress: %s%s %i / %i files    \r'  % 
-        ( chr(9608)*int(current_cnt/divider), chr(9617)*int((total_cnt-current_cnt)/divider), current_cnt, total_cnt))
+        ( full_char*int(current_cnt/divider), empty_char*int((total_cnt-current_cnt)/divider), current_cnt, total_cnt))
     loading_file_line = 'Loading file: ' + str(file_name) 
     #print('Loading file:', file_name + ' '*30)    
     print (loading_file_line + ' '*(len(brogress_bar_line) - len(loading_file_line)))
@@ -306,18 +316,35 @@ def printProgress (file_name,current_cnt,total_cnt):
 
 def main():    
     src_path = str()
+    cmo_fmo = str()
     #trg_path = 'M:/Work/python'
     #list of "Statement" objects:
     statment_obj = list()
-    
-    
-    #ask for anlt path
-    while True:
-        src_path = input('Enter path to anlt folder: ')
+    # only all required parameters - otherwise ignore
+    # py_filename src_directory trg_directory cmo_or_fmo
+    if len(sys.argv) > 1:
+        print('Reading arguments from command line...')
+        src_path = sys.argv[1]
+        trg_path = sys.argv[2] 
+        cmo_fmo = sys.argv[3].upper()
+        print('Source path:', src_path)
+        print('Target path:', trg_path)
+        print ('CMO or FMO svn structure:',cmo_fmo)
         if not os.path.isdir(src_path):
-            print('Directory does not exist...\n')
-        else:
-            break
+            print('Directory does not exist\nExit program...' )
+            sys.exit()
+        if cmo_fmo.upper() not in ('CMO','FMO'):
+            print('CMO and FMO are only possible values...\n')
+            sys.exit()
+            
+    #ask for anlt path
+    if not src_path:
+        while True:
+            src_path = input('Enter path to anlt folder: ')
+            if not os.path.isdir(src_path):
+                print('Directory does not exist...\n')
+            else:
+                break
             
     src_path = src_path.replace("\\","/")
     # output dir is same as input anlt dir - could be changed:
@@ -325,22 +352,24 @@ def main():
     
     # scan CMO or FMO path for grants?
     # actually this CMO and FMO is not required in svn - grants are same
-    while True:
-        cmo_fmo  = input('CMO or FMO svn structure: ').upper()
-        if cmo_fmo not in ('CMO','FMO'):
-            print('CMO and FMO are only possible values...\n')
-        else:
-            break
+    
+    if not cmo_fmo:
+        while True:
+            cmo_fmo  = input('CMO or FMO svn structure: ').upper()
+            if cmo_fmo not in ('CMO','FMO'):
+                print('CMO and FMO are only possible values...\n')
+            else:
+                break
           
     #list of directories and also sequence of reading
-    dirs = ('sequence','synonym','table','view','materialized_view','function','package','trigger','grant/' + cmo_fmo,'data_load_scripts')
+    dirs = ('sequence','synonym','table','view','materialized_view','interface/out','function','procedure','package','trigger','grant/' + cmo_fmo,'data_load_scripts','interface/in')
     
-    #there are four lists with filenames:
+    #there are five lists with filenames:
     filename_list  = list()     # all filenames which are read from folders are here
     deployment_top = list()     # filelist of objects which are deployed firstly, e.g. sequences, synonyms
     deployment_mid = list()     # filelist of objects which are deployed, here we will have objects with dependencies
     deployment_bottom = list()  # filelist of objects which are deployed in the end, e.g. grants
-    
+    deployment_in_if = list()   # filelist of in interfaces - separate deployment sctipt for it
     #count total files - just for UI
     total_cnt = 0
     for subdir in dirs:
@@ -355,11 +384,11 @@ def main():
     # and depending on folder (object type) use different behaviour
     for subdir in dirs: 
         try:
-            files_list = os.listdir(src_path + '/'+ subdir ) #for frogress bar
+            files_list = sorted(os.listdir(src_path + '/'+ subdir )) #for frogress bar
             for x in files_list:
                 printProgress ('../' +  subdir + '/' + x, current_cnt, total_cnt)
                 # for tables, views, mviews the order is important
-                if subdir in ('table','view','materialized_view'):
+                if subdir in ('table','view','materialized_view','interface/out'):
                     f = open(src_path + '/' + subdir + '/' + x, 'r')
                     content = f.read()
                     f.close
@@ -370,14 +399,21 @@ def main():
                 elif subdir in ('sequence','synonym'):
                     deployment_top.append(subdir + '/' + x)
                 # grants, and pl/sql always in the end (bottom list)    
-                elif subdir in ('grant' + cmo_fmo,'function','package','trigger'):
-                    deployment_bottom.append(subdir + '/' + x)    
+                elif subdir in ('grant/' + cmo_fmo,'function','package','trigger','procedure'):
+                    deployment_bottom.append(subdir + '/' + x)
+                # added by sunil. to be reviewed by Maksim.   
+                elif subdir in ('interface/in'):
+                    deployment_in_if.append(subdir + '/' + x)                     
+                #elif subdir in ('interface/out'):
+                # deployment_bottom.append('alter_session_disable_parallel_dml.sql'). not required here,I think.. Chk with Maksim.
+                    #deployment_bottom.append(subdir + '/' + x)  
                 # dataload scripts are in the end
                 # alter_session_disable_parallel_dml - is workaround to have smooth 
                 # dml deployment - should be included to the scripts
-                elif subdir in ('data_load_scripts'):
-                    deployment_bottom.append('alter_session_disable_parallel_dml.sql')
+                # disabled for testing - must be enabled 
+                elif subdir in ('data_load_scripts'): 
                     deployment_bottom.append(subdir + '/' + x) 
+                    
                 current_cnt +=1 #increment just for count in progress bar
         except IOError:
             print('Warning: folder "' + subdir + '" does not exist and skiped' + ' ' * 30 + '\r')
@@ -399,21 +435,18 @@ def main():
     print('Processing: write log-file ... ')  
     logDependency(dep_list,error_list,statment_obj, trg_path)
     
-    
-    
-    
     print('Processing: building deployment script ... ')
     deployment_mid = dependencyToDeployment(filename_list,dep_list)
     
     print('Processing: saving deployment script ... ')
-    writeDeploymentScript(deployment_top + deployment_mid + deployment_bottom,trg_path,'SQL_analyser.sql',src_path)
-    #writeDeploymentScript(deployment_top + deployment_mid + deployment_bottom,trg_path,'SQL_analyser.sql','')
+    writeDeploymentScript(deployment_top + deployment_mid + deployment_bottom,trg_path,'deploy_module.sql',src_path)
+    writeDeploymentScript(deployment_in_if,trg_path,'deploy_in_interfaces.sql',src_path)
     
     print('Done!\nReport file:',trg_path + '/' + 'SQL_analyser.log')
-    print('Deployment file:',trg_path + '/' + 'SQL_analyser.sql')
+    print('Deployment file:',trg_path + '/' + 'deploy_module.sql')
     if len(error_list) > 0:
         print('There are errors: please check log file')
-    input('Press enter key to exit')
+    #input('Press enter key to exit')
     
 if __name__ == '__main__':
     # wrapping for user keyboard interrupt
